@@ -112,10 +112,11 @@ app.get('/launch', async (req, res) => {
     console.error(`Capability '${capability}' not found in ${req.query.iss}`);
     console.debug(`Capabilities of ${req.query.iss} are:`, meta.capabilities);
   }
+  const method = 'private_key_jwt';
   const methods = meta.token_endpoint_auth_methods_supported;
-  if (!methods.includes('private_key_jwt')) {
-    console.error(req.query.iss, "token endpoint must support 'private_key_jwt'");
-    console.debug(`Supported methods: ${methods}`);
+  if (!methods.includes(method)) {
+    console.error(req.query.iss, `token endpoint must support '${method}'`);
+    console.debug('Supported methods:', methods);
   }
 
   // Build up the parameters needed to be passed to the authz endpoint.
