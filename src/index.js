@@ -13,7 +13,7 @@ import uuid from 'uuid';
 const app = express();
 
 const CLIENT_ID = 'demo confidential client id';
-const KEYS = '/tmp/demo.keys';
+const KEYS = 'demo.keys';
 const PKCE = true;
 const PORT = 2021;
 const SESSIONS = new Map();
@@ -23,23 +23,18 @@ app.set('json spaces', 2);
 
 
 function setupKeys(filename) {
-  fs.stat(filename, (err, status) => {
+  fs.stat(filename, async (err, status) => {
     if (err) {
-      console.debug('setting up keys for:', filename);
+      console.info('Creating new keys in:', filename);
       const keyStore = jose.JWK.createKeyStore();
-      keyStore
-      // how to do multiple hashing algorithms and signing keys?
-      .generate('RSA', 2048, {alg: 'RS384', use: 'sig' })
-      //.generate('EC', 'P-384', {alg: 'P-384', use: 'sig' })
-        .then(result => {
-            console.debug('result:', result);
-            fs.writeFileSync(
-              filename,
-              JSON.stringify(keyStore.toJSON(true), null, '  ')
-            )
-          });
+      await keyStore.generate('RSA', 2048, {alg: 'RS384', use: 'sig' });
+      await keyStore.generate('EC', 'P-384', {alg: 'P-384', use: 'sig' });
+      fs.writeFileSync(
+        filename,
+        JSON.stringify(keyStore.toJSON(true), null, '  ')
+      );
     } else {
-      console.debug(`FOUND KEYS in ${filename}:`, status);
+      console.info('Found existing keys in:', filename);
     }
   });
 }
@@ -87,11 +82,11 @@ async function getToken(session, code) {
   });
   if (post.headers) {
     // Sanity check the response headers.
-    const err = "incorrect response header when receiving an access token";
-    if (post.headers['cache-control'] !== "no-store") {
+    const err = 'incorrect response header when receiving an access token';
+    if (post.headers['cache-control'] !== 'no-store') {
       console.warn(`${err}: cache-control !== no-store`);
     }
-    if (post.headers['pragma'] !== "no-cache") {
+    if (post.headers['pragma'] !== 'no-cache') {
       console.warn(`${err}: pragma != no-cache`);
     }
   }
@@ -120,7 +115,7 @@ app.get('/launch', async (req, res) => {
   }
   const algs = meta.token_endpoint_auth_signing_alg_values_supported;
   if (!algs.includes('RS384') && !algs.includes('ES384')) {
-    console.error('Required auth signing algorithm not supported!');
+    console.error('Required signing algorithm (RS384 or ES384) not found!');
     console.debug('Supported algorithms:', algs);
   }
 
