@@ -118,6 +118,11 @@ app.get('/launch', async (req, res) => {
     console.error(req.query.iss, `token endpoint must support '${method}'`);
     console.debug('Supported methods:', methods);
   }
+  const algs = meta.token_endpoint_auth_signing_alg_values_supported;
+  if (!algs.includes('RS384') && !algs.includes('ES384')) {
+    console.error('Required auth signing algorithm not supported!');
+    console.debug('Supported algorithms:', algs);
+  }
 
   // Build up the parameters needed to be passed to the authz endpoint.
   const params = {
