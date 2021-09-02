@@ -56,6 +56,7 @@ async function getSignedJwt(aud) {
     .final();
 }
 
+
 async function getKeyStore(keyFile) {
   const ks = fs.readFileSync(keyFile);
   return await jose.JWK.asKeyStore(ks.toString());
@@ -123,7 +124,7 @@ app.get('/launch', async (req, res) => {
   const params = {
     response_type: 'code',
     client_id: CLIENT_ID,
-    redirect_uri: 'http://localhost:2021/authorized',
+    redirect_uri: `http://localhost:${PORT}/authorized`,
     scope: 'launch openid fhirUser',  // TODO: customize this?
     state: uuid.v4(),
     aud: req.query.iss,
