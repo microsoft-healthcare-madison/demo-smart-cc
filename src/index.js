@@ -139,7 +139,7 @@ app.get('/launch', async (req, res) => {
   // If PKCE is enabled, generate a challenge using a high-entropy random
   // string, such as a uuid, and save it in the session state.
   if (PKCE) {
-    const btoa = (data) => Buffer.from(data).toString('Base64');
+    const btoa = (data) => Buffer.from(data.toString()).toString('Base64');
     meta['pkce_code_verifier'] = uuid.v4();
     params['code_challenge_method'] = 'S256';
     params['code_challenge'] = btoa(sha256(meta.pkce_code_verifier));
@@ -157,8 +157,7 @@ app.get('/authorized', async (req, res) => {
   const session = SESSIONS.get(state);
   const token = await getToken(session, req.query.code);
   session['token'] = token;
-
-  // TODO: use the bearer token to do something on the FHIR server.
+  res.send('TODO: prove that the bearer token received can be used...');
 });
 
 
