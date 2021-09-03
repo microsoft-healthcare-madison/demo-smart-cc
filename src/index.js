@@ -137,10 +137,10 @@ app.get('/launch', async (req, res) => {
   }
 
   // If PKCE is enabled, generate a challenge using a high-entropy random
-  // string, such as a uuid, and save it in the session state.
+  // 128 character string, and save it in the session state.
   if (PKCE) {
     const btoa = (data) => Buffer.from(data.toString()).toString('Base64');
-    meta['pkce_code_verifier'] = uuid.v4();
+    meta['pkce_code_verifier'] = jose.util.randomBytes(64).toString('hex');
     params['code_challenge_method'] = 'S256';
     params['code_challenge'] = btoa(sha256(meta.pkce_code_verifier));
   }
