@@ -7,6 +7,7 @@ import express from 'express';
 import fetch from 'node-fetch';
 import fs from 'fs';
 import jose from 'node-jose';
+import pkce from 'pkce-challenge';
 import sha256 from 'crypto-js/sha256.js';
 import uuid from 'uuid';
 
@@ -136,13 +137,13 @@ app.get('/launch', async (req, res) => {
     params['launch'] = req.query.launch;
   }
 
-  // If PKCE is enabled, generate a challenge using a high-entropy random
-  // 128 character string, and save it in the session state.
+  // If PKCE is enabled, generate a challenge and verifier using 128 bits of
+  // entropy and save it in the session state.
   if (PKCE) {
-    const btoa = (data) => Buffer.from(data.toString()).toString('Base64');
-    meta['pkce_code_verifier'] = jose.util.randomBytes(64).toString('hex');
+    const { code_challenge, code_verifier } = pkce(128);
+    meta['pkce_code_verifier'] = code_verifier;
     params['code_challenge_method'] = 'S256';
-    params['code_challenge'] = btoa(sha256(meta.pkce_code_verifier));
+    params['code_challenge'] = code_challenge;
   }
   SESSIONS.set(params.state, {meta: meta, authz: params});
   const url = new URL(meta.authorization_endpoint).toString();
