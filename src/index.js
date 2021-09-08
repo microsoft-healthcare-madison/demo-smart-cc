@@ -18,6 +18,7 @@ const KEYS = 'demo.keys';
 const PKCE = true;
 const PORT = 2021;
 const SESSIONS = new Map();
+const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${port}`;
 
 app.use(cors({ origin: true, credentials: true }));
 app.set('json spaces', 2);
@@ -69,12 +70,12 @@ async function getToken(session, code) {
   const params = {
     grant_type: 'authorization_code',
     code: code,
-    redirect_uri: session.authz.redirect_uri,
+    redirect_uri: session.authzParams.redirect_uri,
     client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
     client_assertion: await getSignedJwt(token_url),
   }
   if (PKCE) {
-    params['code_verifier'] = session.meta.pkce_code_verifier;
+    params['code_verifier'] = session.pkceVerifier;
   }
   const payload = new URLSearchParams(params).toString();
   const post = await axios.post(token_url, payload, {
@@ -122,10 +123,10 @@ app.get('/launch', async (req, res) => {
   }
 
   // Build up the parameters needed to be passed to the authz endpoint.
-  const params = {
+  const authzParams = {
     response_type: 'code',
     client_id: CLIENT_ID,
-    redirect_uri: `http://localhost:${PORT}/authorized`,
+    redirect_uri: `${PUBLIC_URL}/authorized`,
     scope: 'launch openid fhirUser',  // TODO: customize this?
     state: uuid.v4(),
     aud: req.query.iss,
@@ -134,20 +135,21 @@ app.get('/launch', async (req, res) => {
   // If this app was launched in the EHR flow, there will be a launch
   // parameter that must be passed through to the authz endpoint.
   if (req.query.launch) {
-    params['launch'] = req.query.launch;
+    authzParams['launch'] = req.query.launch;
   }
 
   // If PKCE is enabled, generate a challenge and verifier using 128 bits of
   // entropy and save it in the session state.
+  let pkceVerifier = null;
   if (PKCE) {
     const { code_challenge, code_verifier } = pkce(128);
-    meta['pkce_code_verifier'] = code_verifier;
-    params['code_challenge_method'] = 'S256';
-    params['code_challenge'] = code_challenge;
+    authzParams['code_challenge_method'] = 'S256';
+    authzParams['code_challenge'] = code_challenge;
+    pkceVerifier = code_verifier;
   }
-  SESSIONS.set(params.state, {meta: meta, authz: params});
+  SESSIONS.set(params.state, {meta, pkceVerifier, authzParams});
   const url = new URL(meta.authorization_endpoint).toString();
-  const qs = new URLSearchParams(params).toString();
+  const qs = new URLSearchParams(authzParams).toString();
   res.redirect(`${url}?${qs}`);
 });
 
@@ -163,15 +165,13 @@ app.get('/authorized', async (req, res) => {
 
 
 app.get('/jwks.json', async (req, res) => {
-  const jwt = await getSignedJwt();
-  console.log(jwt)
   res.send((await getKeyStore(KEYS)).toJSON());
 });
 
 
 app.listen(PORT, () => {
   console.log(`Demo Confidential Client listening on port ${PORT}!`);
-  console.log(`  http://localhost:${PORT}/jwks.json`);
-  console.log(`  http://localhost:${PORT}/launch`);
-  console.log(`  http://localhost:${PORT}/authorized`);
+  console.log(`  ${PUBLIC_URL}/jwks.json`);
+  console.log(`  ${PUBLIC_URL}/launch`);
+  console.log(`  ${PUBLIC_URL}/authorized`);
 });
