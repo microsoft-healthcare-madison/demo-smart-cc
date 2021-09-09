@@ -8,7 +8,6 @@ import fetch from 'node-fetch';
 import fs from 'fs';
 import jose from 'node-jose';
 import pkce from 'pkce-challenge';
-import sha256 from 'crypto-js/sha256.js';
 import uuid from 'uuid';
 
 const app = express();
@@ -147,7 +146,7 @@ app.get('/launch', async (req, res) => {
     authzParams['code_challenge'] = code_challenge;
     pkceVerifier = code_verifier;
   }
-  SESSIONS.set(params.state, {meta, pkceVerifier, authzParams});
+  SESSIONS.set(authzParams.state, {meta, pkceVerifier, authzParams});
   const url = new URL(meta.authorization_endpoint).toString();
   const qs = new URLSearchParams(authzParams).toString();
   res.redirect(`${url}?${qs}`);
