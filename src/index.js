@@ -15,7 +15,7 @@ const app = express();
 const CLIENT_ID = 'demo confidential client id';
 const KEYS = 'demo.keys';
 const PKCE = true;
-const PORT = 2021;
+const PORT = process.env.PORT || 2021;
 const SESSIONS = new Map();
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 
@@ -159,7 +159,7 @@ app.get('/authorized', async (req, res) => {
   const session = SESSIONS.get(state);
   const token = await getToken(session, req.query.code);
   session['token'] = token;
-  res.send('TODO: prove that the bearer token received can be used...');
+  res.send('TODO: prove that the bearer token received can be used...' + JSON.stringify(token));
 });
 
 
