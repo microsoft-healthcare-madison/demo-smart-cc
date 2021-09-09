@@ -18,7 +18,7 @@ const KEYS = 'demo.keys';
 const PKCE = true;
 const PORT = 2021;
 const SESSIONS = new Map();
-const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${port}`;
+const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 
 app.use(cors({ origin: true, credentials: true }));
 app.set('json spaces', 2);
