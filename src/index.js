@@ -1,6 +1,5 @@
 // See: https://sometimes-react.medium.com/jwks-and-node-jose-9273f89f9a02
 // See: https://github.com/HL7/smart-app-launch/blob/add-backend-services/input/pages/client-confidential-asymmetric.md
-
 import axios from 'axios';
 import cors from 'cors';
 import express from 'express';
@@ -159,13 +158,30 @@ app.get('/authorized', async (req, res) => {
   const session = SESSIONS.get(state);
   const token = await getToken(session, req.query.code);
   session['token'] = token;
-  res.send('TODO: prove that the bearer token received can be used...' + JSON.stringify(token));
+  res.send('<pre>' + JSON.stringify(token, null, "  ") + '</pre>');
 });
 
 
 app.get('/jwks.json', async (req, res) => {
   res.send((await getKeyStore(KEYS)).toJSON());
 });
+
+
+app.get('/', (req, res) => {
+  res.send(`
+    <html>
+      <body>
+        <h1>Demo SMART Confidential Client</h1>
+        <p>View Source:
+        <a 
+          href="https://github.com/microsoft-healthcare-madison/demo-smart-cc"
+          target="_blank"
+          rel="noopener noreferrer"
+        >https://github.com/microsoft-healthcare-madison/demo-smart-cc</a>
+      </body>
+    </html>
+  `);
+})
 
 
 app.listen(PORT, () => {
