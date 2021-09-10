@@ -1,6 +1,10 @@
 # demo-smart-cc
 A demonstration SMART confidential client for testing the new features of the SMARTv2 launch protocols.
 
+## Connectathon Participants
+
+Please view the slide deck here: [https://aka.ms/c10n28-smart-v2](https://aka.ms/c10n28-smart-v2)
+
 ## Static Hosting
 
 A copy of this demo is hosted on Glitch at:
