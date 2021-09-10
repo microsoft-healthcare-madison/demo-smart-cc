@@ -24,9 +24,9 @@ Field | Selection or Value
 Client Identity Validation Method | client-confidential-asymmetric
 Redirect URIs | https://proud-wooden-payment.glitch.me/authorized
 JWKS URI | https://proud-wooden-payment.glitch.me/jwks.json
-JWKS Inline | *Clear this field after populating a jwks.json uri above and it will automatically populate using the link.*
+JWKS Inline | *Clear this field after populating a jwks.json uri above and it will automatically populate with the fetched contents of the JWKS URI.*
 
-After setting these values, enter a launch URI in the bottom configuration panel.
+After setting these values, enter the launch URI in the bottom configuration panel.
 
 ![image](https://user-images.githubusercontent.com/4342684/132780341-ddeed561-dbac-4166-bc27-2c0d36dab13e.png)
 
