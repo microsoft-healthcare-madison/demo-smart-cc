@@ -11,6 +11,8 @@ A copy of this demo is hosted on Glitch at:
 You can test the static hosted demo against the SMART app launcher fork found here:
 [https://smart.argo.run](https://smart.argo.run)
 
+See [below](#link) for a longer link with pre-populated values for the launcher.
+
 ### Example Test
 
 Expand the new options panel.  These options are intended to represent values which would normally be configured once when an app is first registered with an EHR.
