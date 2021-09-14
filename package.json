@@ -32,6 +32,8 @@
     "cors": "^2.8.5",
     "crypto-js": "^4.1.1",
     "express": "^4.17.1",
+    "express-session": "^1.17.2",
+    "fhirclient": "github:microsoft-healthcare-madison/client-js#c10n-2021-09",
     "fs": "^0.0.1-security",
     "node-fetch": "^3.0.0",
     "node-jose": "^2.0.0",
