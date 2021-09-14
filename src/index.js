@@ -9,24 +9,33 @@ import jose from 'node-jose';
 import pkce from 'pkce-challenge';
 import uuid from 'uuid';
 import nunjucks from 'nunjucks';
-import cookieParser from 'cookie-parser';
+import session from 'express-session';
 
 const app = express();
 
 const CLIENT_ID = process.env.CLIENT_ID ||  'demo confidential client id';
-const CLIENT_ID_CC = process.env.CLIENT_ID_CC || 'demo M2M client id'
+const CLIENT_ID_CC = process.env.CLIENT_ID_CC // || 'demo M2M client id';
 const KEYS = 'demo.keys';
 const KEYS_CC = 'demo.cc_keys'; //client credential flow keys
 const PKCE = true;
 const PORT = process.env.PORT || 2021;
-const SESSIONS = new Map();
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 const SCOPES = process.env.SCOPES || 'launch openid fhirUser';
 const SCOPES_CC = process.env.SCOPES_CC || 'user/*.*';
+const SECRET = process.env.SECRET || 'This is something unlikely to occurr by chance.';
+const SECURE = process.env.SECURE || !PUBLIC_URL.startsWith('http://localhost:');
 
 app.use(cors({ origin: true, credentials: true }));
 app.set('json spaces', 2);
-app.use(cookieParser())
+app.use(session({
+  secret: SECRET,
+  resave: false,
+  saveUninitialized: true,
+  cookie: {
+    secure: SECURE,
+    httpOnly: true,
+  }
+}));
 
 nunjucks.configure('views', {
     autoescape: true,
@@ -72,19 +81,7 @@ async function getKeyStore(keyFile) {
   return await jose.JWK.asKeyStore(ks.toString());
 }
 
-//Used to get a token using the authorization code flow.
-async function getToken(session, code) {
-  const token_url = session.meta.token_endpoint;
-  const params = {
-    grant_type: 'authorization_code',
-    code: code,
-    redirect_uri: session.authzParams.redirect_uri,
-    client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-    client_assertion: await getSignedJwt(token_url, CLIENT_ID, KEYS),
-  }
-  if (PKCE) {
-    params['code_verifier'] = session.pkceVerifier;
-  }
+async function sendPostRequest(token_url, params) {
   const payload = new URLSearchParams(params).toString();
   const post = await axios.post(token_url, payload, {
     headers: {
@@ -104,32 +101,30 @@ async function getToken(session, code) {
   return post.data;
 }
 
-//Used to get a token using the client credentials flow.
+// Used to get a token using the authorization code flow.
+async function getTokenAuthFlow(session, code) {
+  const token_url = session.meta.token_endpoint;
+  const params = {
+    client_assertion: await getSignedJwt(token_url, CLIENT_ID, KEYS),
+    client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+    code: code,
+    code_verifier: session.pkceVerifier,
+    grant_type: 'authorization_code',
+    redirect_uri: session.authzParams.redirect_uri,
+  }
+  return sendPostRequest(token_url, params);
+}
+
+// Used to get a token using the client credentials flow.
 async function getClientCredentialToken(session) {
   const token_url = session.meta.token_endpoint;
   const params = {
-    grant_type: 'client_credentials',
-    client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
     client_assertion: await getSignedJwt(token_url, CLIENT_ID_CC, KEYS_CC),
-    scope: SCOPES_CC
+    client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+    grant_type: 'client_credentials',
+    scope: SCOPES_CC,
   }
-  const payload = new URLSearchParams(params).toString();
-  const post = await axios.post(token_url, payload, {
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-    }
-  });
-  if (post.headers) {
-    // Sanity check the response headers.
-    const err = 'incorrect response header when receiving an access token';
-    if (post.headers['cache-control'] !== 'no-store') {
-      console.warn(`${err}: cache-control !== no-store`);
-    }
-    if (post.headers['pragma'] !== 'no-cache') {
-      console.warn(`${err}: pragma != no-cache`);
-    }
-  }
-  return post.data;
+  return sendPostRequest(token_url, params);
 }
 
 app.get('/launch', async (req, res) => {
@@ -182,8 +177,8 @@ app.get('/launch', async (req, res) => {
     authzParams['code_challenge'] = code_challenge;
     pkceVerifier = code_verifier;
   }
-  res.cookie('smart_authz_state', authzParams.state, { httpOnly: true });
-  SESSIONS.set(authzParams.state, {meta, pkceVerifier, authzParams});
+  req.session.oauth_state = authzParams.state;
+  req.session.oauth_parameters = {meta, pkceVerifier, authzParams};
   const url = new URL(meta.authorization_endpoint).toString();
   const qs = new URLSearchParams(authzParams).toString();
   res.redirect(`${url}?${qs}`);
@@ -192,15 +187,14 @@ app.get('/launch', async (req, res) => {
 app.get('/authorized', async (req, res) => {
   // See https://hl7.org/fhir/uv/bulkdata/authorization/index.html#protocol-details for asymm auth
   const state = req.query.state;
-  const originalState = req.cookies.smart_authz_state
-  const session = SESSIONS.get(originalState);
-
+  const originalState = req.session.oauth_state;
+  const session = req.session.oauth_parameters;
   var token = ''
-  var ccToken
-  if(state === originalState) {
-    token = await getToken(session, req.query.code);
-    if(CLIENT_ID_CC) {
-      ccToken = await getClientCredentialToken(session)
+  var ccToken = ''
+  if (state === originalState) {
+    token = await getTokenAuthFlow(session, req.query.code);
+    if (CLIENT_ID_CC) {
+      ccToken = await getClientCredentialToken(session);
     }
   }
   else {
