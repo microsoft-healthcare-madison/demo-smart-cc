@@ -8,19 +8,40 @@ import fs from 'fs';
 import jose from 'node-jose';
 import pkce from 'pkce-challenge';
 import uuid from 'uuid';
+import nunjucks from 'nunjucks';
+import session from 'express-session';
 
 const app = express();
 
-const CLIENT_ID = 'demo confidential client id';
+const CLIENT_ID = process.env.CLIENT_ID ||  'demo confidential client id';
+const CLIENT_ID_CC = process.env.CLIENT_ID_CC // || 'demo M2M client id';
 const KEYS = 'demo.keys';
+const KEYS_CC = 'demo.cc_keys'; //client credential flow keys
 const PKCE = true;
 const PORT = process.env.PORT || 2021;
-const SESSIONS = new Map();
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+const SCOPES = process.env.SCOPES || 'launch openid fhirUser';
+const SCOPES_CC = process.env.SCOPES_CC || 'user/*.*';
+const SECRET = process.env.SECRET || 'This is something unlikely to occurr by chance.';
+const SECURE = process.env.SECURE || !PUBLIC_URL.startsWith('http://localhost:');
 
 app.use(cors({ origin: true, credentials: true }));
 app.set('json spaces', 2);
+app.set('trust proxy', 1);
+app.use(session({
+  secret: SECRET,
+  resave: false,
+  saveUninitialized: true,
+  cookie: {
+    secure: SECURE,
+    httpOnly: true,
+  }
+}));
 
+nunjucks.configure('views', {
+    autoescape: true,
+    express: app
+});
 
 function setupKeys(filename) {
   fs.stat(filename, async (err, status) => {
@@ -28,7 +49,7 @@ function setupKeys(filename) {
       console.info('Creating new keys in:', filename);
       const keyStore = jose.JWK.createKeyStore();
       await keyStore.generate('RSA', 2048, {alg: 'RS384', use: 'sig' });
-      await keyStore.generate('EC', 'P-384', {alg: 'P-384', use: 'sig' });
+      await keyStore.generate('EC', 'P-384', {alg: 'ES384', use: 'sig' });
       fs.writeFileSync(
         filename,
         JSON.stringify(keyStore.toJSON(true), null, '  ')
@@ -39,14 +60,14 @@ function setupKeys(filename) {
   });
 }
 setupKeys(KEYS);
+setupKeys(KEYS_CC);
 
-
-async function getSignedJwt(aud) {
-  const [key] = (await getKeyStore(KEYS)).all({ use: 'sig' });
+async function getSignedJwt(aud, clientId, keyFile) {
+  const [key] = (await getKeyStore(keyFile)).all({ use: 'sig' });
   const opt = { compact: true, jwk: key, fields: { typ: 'JWT' } }
   const payload = JSON.stringify({
-    iss: CLIENT_ID,
-    sub: CLIENT_ID,
+    iss: clientId,
+    sub: clientId,
     aud: aud,
     exp: Math.floor(Date.now() / 1000 + 5*60),
     jti: uuid.v4(),
@@ -56,25 +77,12 @@ async function getSignedJwt(aud) {
     .final();
 }
 
-
 async function getKeyStore(keyFile) {
   const ks = fs.readFileSync(keyFile);
   return await jose.JWK.asKeyStore(ks.toString());
 }
 
-
-async function getToken(session, code) {
-  const token_url = session.meta.token_endpoint;
-  const params = {
-    grant_type: 'authorization_code',
-    code: code,
-    redirect_uri: session.authzParams.redirect_uri,
-    client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-    client_assertion: await getSignedJwt(token_url),
-  }
-  if (PKCE) {
-    params['code_verifier'] = session.pkceVerifier;
-  }
+async function sendPostRequest(token_url, params) {
   const payload = new URLSearchParams(params).toString();
   const post = await axios.post(token_url, payload, {
     headers: {
@@ -94,6 +102,31 @@ async function getToken(session, code) {
   return post.data;
 }
 
+// Used to get a token using the authorization code flow.
+async function getTokenAuthFlow(session, code) {
+  const token_url = session.meta.token_endpoint;
+  const params = {
+    client_assertion: await getSignedJwt(token_url, CLIENT_ID, KEYS),
+    client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+    code: code,
+    code_verifier: session.pkceVerifier,
+    grant_type: 'authorization_code',
+    redirect_uri: session.authzParams.redirect_uri,
+  }
+  return sendPostRequest(token_url, params);
+}
+
+// Used to get a token using the client credentials flow.
+async function getClientCredentialToken(session) {
+  const token_url = session.meta.token_endpoint;
+  const params = {
+    client_assertion: await getSignedJwt(token_url, CLIENT_ID_CC, KEYS_CC),
+    client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+    grant_type: 'client_credentials',
+    scope: SCOPES_CC,
+  }
+  return sendPostRequest(token_url, params);
+}
 
 app.get('/launch', async (req, res) => {
   // Read the SMART configuration from the FHIR server to get the authz
@@ -125,7 +158,7 @@ app.get('/launch', async (req, res) => {
     response_type: 'code',
     client_id: CLIENT_ID,
     redirect_uri: `${PUBLIC_URL}/authorized`,
-    scope: 'launch openid fhirUser',  // TODO: customize this?
+    scope: SCOPES,
     state: uuid.v4(),
     aud: req.query.iss,
   };
@@ -145,42 +178,52 @@ app.get('/launch', async (req, res) => {
     authzParams['code_challenge'] = code_challenge;
     pkceVerifier = code_verifier;
   }
-  SESSIONS.set(authzParams.state, {meta, pkceVerifier, authzParams});
+  req.session.oauth_state = authzParams.state;
+  req.session.oauth_parameters = {meta, pkceVerifier, authzParams};
   const url = new URL(meta.authorization_endpoint).toString();
   const qs = new URLSearchParams(authzParams).toString();
   res.redirect(`${url}?${qs}`);
 });
 
-
 app.get('/authorized', async (req, res) => {
   // See https://hl7.org/fhir/uv/bulkdata/authorization/index.html#protocol-details for asymm auth
   const state = req.query.state;
-  const session = SESSIONS.get(state);
-  const token = await getToken(session, req.query.code);
-  session['token'] = token;
-  res.send('<pre>' + JSON.stringify(token, null, "  ") + '</pre>');
-});
+  const originalState = req.session.oauth_state;
+  const session = req.session.oauth_parameters;
+  var token = ''
+  var ccToken = ''
+  if (state === originalState) {
+    token = await getTokenAuthFlow(session, req.query.code);
+    if (CLIENT_ID_CC) {
+      ccToken = await getClientCredentialToken(session);
+    }
+  }
+  else {
+    token = 'Error: The state parameter was invalid!';
+  }
 
+  res.render('authorized.html', {token: JSON.stringify(token), cc_token: JSON.stringify(ccToken)})
+});
 
 app.get('/jwks.json', async (req, res) => {
   res.send((await getKeyStore(KEYS)).toJSON());
 });
 
+app.get('/jwks_cc.json', async (req, res) => {
+  res.send((await getKeyStore(KEYS_CC)).toJSON());
+});
 
-app.get('/', (req, res) => {
-  res.send(`
-    <html>
-      <body>
-        <h1>Demo SMART Confidential Client</h1>
-        <p>View Source:
-        <a 
-          href="https://github.com/microsoft-healthcare-madison/demo-smart-cc"
-          target="_blank"
-          rel="noopener noreferrer"
-        >https://github.com/microsoft-healthcare-madison/demo-smart-cc</a>
-      </body>
-    </html>
-  `);
+app.get('/', async (req, res) => {
+  const keys = (await getKeyStore(KEYS)).toJSON()
+  const keys_cc = (await getKeyStore(KEYS_CC)).toJSON()
+
+  res.render('index.html', {
+    client_id: CLIENT_ID,
+    client_id_cc: CLIENT_ID_CC,
+    public_url: PUBLIC_URL,
+    scopes: SCOPES,
+    scopes_cc: SCOPES_CC
+  });
 })
 
 
