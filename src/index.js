@@ -27,6 +27,7 @@ const SECURE = process.env.SECURE || !PUBLIC_URL.startsWith('http://localhost:')
 
 app.use(cors({ origin: true, credentials: true }));
 app.set('json spaces', 2);
+app.set('trust proxy', 1);
 app.use(session({
   secret: SECRET,
   resave: false,
