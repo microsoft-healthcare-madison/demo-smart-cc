@@ -49,7 +49,7 @@ function setupKeys(filename) {
       console.info('Creating new keys in:', filename);
       const keyStore = jose.JWK.createKeyStore();
       await keyStore.generate('RSA', 2048, {alg: 'RS384', use: 'sig' });
-      await keyStore.generate('EC', 'P-384', {alg: 'P-384', use: 'sig' });
+      await keyStore.generate('EC', 'P-384', {alg: 'ES384', use: 'sig' });
       fs.writeFileSync(
         filename,
         JSON.stringify(keyStore.toJSON(true), null, '  ')
